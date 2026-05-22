@@ -1,0 +1,4 @@
+node_modules/
+dist/
+.context-engine-sim/
+experiment-result-*.json
