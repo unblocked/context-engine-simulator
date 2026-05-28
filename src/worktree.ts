@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import type { WorktreeInfo } from "./types.js";
 
@@ -8,7 +9,7 @@ const WORKTREE_PREFIX = "ces";
 export function createWorktree(repoPath: string, name: string, baseBranch: string): WorktreeInfo {
   const suffix = randomBytes(4).toString("hex");
   const worktreeName = `${WORKTREE_PREFIX}-${name}-${suffix}`;
-  const worktreeDir = path.join(repoPath, ".context-engine-sim", worktreeName);
+  const worktreeDir = path.join(os.tmpdir(), "context-engine-sim", worktreeName);
 
   execSync(`git worktree add -b "${worktreeName}" "${worktreeDir}" "${baseBranch}"`, {
     cwd: repoPath,

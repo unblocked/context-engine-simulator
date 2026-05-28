@@ -21,16 +21,48 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-export function formatPercent(baseline: number, enhanced: number): string {
-  if (baseline === 0) return "N/A";
-  const change = ((enhanced - baseline) / baseline) * 100;
-  const sign = change >= 0 ? "+" : "";
-  return `${sign}${change.toFixed(1)}%`;
-}
-
 export function log(message: string): void {
   const timestamp = new Date().toLocaleTimeString();
   process.stderr.write(`[${timestamp}] ${message}\n`);
+}
+
+export interface TokenUsageLike {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+}
+
+// Per-token pricing ($/M tokens) — from cursor.com/docs/models-and-pricing and provider docs
+const PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+  "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 },
+  "claude-sonnet-4-5": { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 },
+  "claude-opus-4-7": { input: 5, output: 25, cacheRead: 0.50, cacheWrite: 6.25 },
+  "claude-haiku-4-5": { input: 1, output: 5, cacheRead: 0.10, cacheWrite: 1.25 },
+  "gpt-4o": { input: 2.5, output: 10, cacheRead: 1.25, cacheWrite: 2.5 },
+  "gpt-4.1": { input: 2, output: 8, cacheRead: 0.50, cacheWrite: 2 },
+  "o3": { input: 10, output: 40, cacheRead: 2.50, cacheWrite: 10 },
+  "auto": { input: 1.25, output: 6, cacheRead: 0.25, cacheWrite: 1.25 },
+  "sonnet": { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 },
+  "opus": { input: 5, output: 25, cacheRead: 0.50, cacheWrite: 6.25 },
+  "haiku": { input: 1, output: 5, cacheRead: 0.10, cacheWrite: 1.25 },
+};
+
+function matchPricing(model: string): { input: number; output: number; cacheRead: number; cacheWrite: number } {
+  if (PRICING[model]) return PRICING[model];
+  const m = model.toLowerCase();
+  if (m.includes("opus")) return PRICING["opus"];
+  if (m.includes("haiku")) return PRICING["haiku"];
+  if (m.includes("sonnet")) return PRICING["sonnet"];
+  return PRICING["sonnet"];
+}
+
+export function estimateCost(model: string, u: TokenUsageLike): number {
+  const p = matchPricing(model);
+  return (u.inputTokens / 1_000_000) * p.input
+    + (u.outputTokens / 1_000_000) * p.output
+    + (u.cacheReadTokens / 1_000_000) * p.cacheRead
+    + (u.cacheCreationTokens / 1_000_000) * p.cacheWrite;
 }
 
 export function padRight(str: string, width: number): string {

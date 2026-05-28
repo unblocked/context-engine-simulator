@@ -1,0 +1,38 @@
+# Context Engine Simulator — Fixture Format
+#
+# Run with: npx tsx src/index.ts --fixture path/to/fixture.yaml
+# CLI flags override fixture values when both are provided.
+
+repo: /path/to/target-repo
+branch: main
+
+task: |
+  Add a new /health endpoint to the API server that returns
+  a JSON object with the service name and current timestamp.
+
+criteria: |
+  1. GET /health returns 200 with JSON body
+  2. Response includes "service" and "timestamp" fields
+  3. Endpoint is registered in the router following existing patterns
+
+# Optional: agent CLI to use (default: claude)
+# agent: claude  # claude | codex | grok | cursor
+
+# Optional: model overrides (default: sonnet)
+# model: sonnet
+# contextModel: sonnet
+# evalModel: sonnet
+
+# Optional: additional instructions for context collection agents
+# contextInstructions: |
+#   Focus on the API routing layer and existing health check patterns.
+
+# Optional: custom API base URL (passed as ANTHROPIC_BASE_URL to Claude)
+# apiUrl: https://your-proxy.example.com
+
+# Optional: timeout per claude invocation (seconds)
+# timeout: 3600
+# contextTimeout: 600
+
+# Optional: keep worktrees after run for inspection
+# keepWorktrees: true

@@ -15,9 +15,10 @@ export interface ClaudeRawOutput {
     cache_read_input_tokens: number;
     output_tokens: number;
   };
+  structured_output?: unknown;
 }
 
-export interface ClaudeResult {
+export interface AgentResult {
   success: boolean;
   result: string;
   durationMs: number;
@@ -28,50 +29,89 @@ export interface ClaudeResult {
   cacheCreationTokens: number;
   numTurns: number;
   sessionId: string;
+  structuredOutput?: unknown;
   error?: string;
 }
 
-export interface ClaudeInvokeOptions {
+export interface AgentInvokeOptions {
   prompt: string;
   cwd: string;
   model: string;
   systemPrompt?: string;
   appendSystemPrompt?: string;
   timeoutMs: number;
-  maxBudgetUsd: number;
   dangerouslySkipPermissions: boolean;
   disallowedTools?: string[];
   allowedTools?: string[];
   tools?: string;
   jsonSchema?: string;
+  env?: Record<string, string>;
+  verbose?: boolean;
+  tag?: string;
+  worktree?: string;
+  worktreeBase?: string;
+  bannedMcpServers?: string[];
 }
 
 export interface EvalResult {
   score: number;
   reasoning: string;
-  claudeResult: ClaudeResult;
+  claudeResult: AgentResult;
 }
 
-export interface ContextBundle {
-  raw: string;
-  claudeResult: ClaudeResult;
+export interface DiffStats {
+  filesChanged: number;
+  linesAdded: number;
+  linesRemoved: number;
 }
 
-export interface ExperimentArm {
+export interface BaselineArm {
   name: string;
-  taskRun: ClaudeResult;
-  eval: EvalResult;
+  planRun: AgentResult;
+  reviewRun: AgentResult;
+  implementRun: AgentResult;
+  evaluation?: EvalResult;
+  diff: string;
+  diffStats: DiffStats;
+  wallClockMs: number;
+}
+
+export interface ContextAttribution {
+  category: string;
+  gathered: string[];
+  used: string[];
+  impact: "high" | "medium" | "low" | "none";
+}
+
+export interface ContextAnalysis {
+  attributions: ContextAttribution[];
+  claudeResult: AgentResult;
+}
+
+export interface ContextEnhancedArm {
+  name: string;
+  initialContextRun: AgentResult;
+  patternExtractionRun: AgentResult;
+  planRun: AgentResult;
+  planContextRun: AgentResult;
+  reviewRun: AgentResult;
+  implementRun: AgentResult;
+  evaluation?: EvalResult;
+  contextAnalysis?: ContextAnalysis;
+  diff: string;
+  diffStats: DiffStats;
+  wallClockMs: number;
 }
 
 export interface ExperimentResult {
   repoPath: string;
   task: string;
-  criteria: string;
+  criteria?: string;
   branch: string;
+  agent: AgentName;
   model: string;
-  baseline: ExperimentArm;
-  contextCollection: ContextBundle;
-  contextEnhanced: ExperimentArm;
+  baseline: BaselineArm;
+  contextEnhanced: ContextEnhancedArm;
   totalCostUsd: number;
   totalDurationMs: number;
 }
@@ -81,16 +121,29 @@ export interface WorktreeInfo {
   branch: string;
 }
 
+export class ContaminationError extends Error {
+  constructor(public server: string, public detail: string) {
+    super(`Contamination: agent called banned MCP server '${server}' (${detail})`);
+    this.name = "ContaminationError";
+  }
+}
+
+export type AgentName = "claude" | "codex" | "grok" | "cursor";
+
 export interface CliConfig {
   repo: string;
   task: string;
-  criteria: string;
+  criteria?: string;
+  contextInstructions: string;
+  agent: AgentName;
   model: string;
   contextModel: string;
   evalModel: string;
   timeoutSeconds: number;
-  maxBudgetUsd: number;
+  contextTimeoutSeconds: number;
   branch: string;
   verbose: boolean;
   keepWorktrees: boolean;
+  apiUrl?: string;
+  disabledMcpServers: string[];
 }
