@@ -5,21 +5,9 @@ export function buildPlanSystemSuffix(hasContext: boolean): string {
     ? `\n\nA pre-gathered context bundle is provided below with file paths, code patterns, and organizational context. Use it as your starting point — it gives you a head start on understanding the codebase. You can still read files and explore as needed to fill in gaps.`
     : "";
 
-  return `You are analyzing a codebase to create an implementation plan for a coding task. Work autonomously — do not ask questions.
+  return `You are creating an implementation plan for a coding task. Work autonomously — do not ask questions. Do NOT modify any files.
 
-YOUR JOB: Produce an implementation plan that FULLY solves the task. Do NOT modify any files.
-
-The plan must cover the COMPLETE scope of the task — not a "first step" or partial solution. If the task says "implement X with Y," the plan must deliver X with Y, not just refactor a parameter.
-
-Explore the codebase. Read the relevant files. Understand the existing patterns.${contextAddendum}
-
-Your plan must include:
-- Which files need to be created or modified, with exact paths
-- The approach for each file: what to change and why (reference existing patterns where relevant)
-- The order of changes and why that order matters
-- Potential risks or edge cases
-
-Keep the plan strategic — describe the approach, not line-by-line code. A capable engineer will implement from this plan, so focus on decisions and architecture, not syntax.
+Produce an implementation plan that fully solves the task.${contextAddendum}
 
 Output ONLY the implementation plan.`;
 }

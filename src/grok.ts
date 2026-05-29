@@ -1,12 +1,36 @@
 import { spawn } from "node:child_process";
-import { writeFileSync, unlinkSync } from "node:fs";
+import { writeFileSync, unlinkSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import type { AgentInvokeOptions, AgentResult } from "./types.js";
+import { log } from "./util.js";
 
-interface GrokRawOutput {
-  text?: string;
+// Grok exposes no per-turn usage in its stdout. Its session dir's signals.json
+// records `contextTokensUsed` — the real peak context-window token count (input
+// + tool results + reasoning + output). It does NOT split input/output, so we
+// report the real aggregate as inputTokens and leave outputTokens at 0 rather
+// than fabricate a split. grok-build is subscription-priced (no per-token rate),
+// so costUsd stays 0.
+function readGrokTokens(sessionId: string): number {
+  if (!sessionId) return 0;
+  const base = join(homedir(), ".grok", "sessions");
+  if (!existsSync(base)) return 0;
+  for (const cwdDir of readdirSync(base)) {
+    const signals = join(base, cwdDir, sessionId, "signals.json");
+    if (existsSync(signals)) {
+      try {
+        const s = JSON.parse(readFileSync(signals, "utf-8")) as { contextTokensUsed?: number };
+        return s.contextTokensUsed ?? 0;
+      } catch { return 0; }
+    }
+  }
+  return 0;
+}
+
+interface GrokStreamEvent {
+  type: "thought" | "text" | "end" | string;
+  data?: string;
   stopReason?: string;
   sessionId?: string;
   requestId?: string;
@@ -45,7 +69,7 @@ function invokeGrokBinary(
 
   const args: string[] = [
     "--prompt-file", promptFile,
-    "--output-format", "json",
+    "--output-format", "streaming-json",
     "--cwd", opts.cwd,
     "--model", opts.model,
   ];
@@ -62,8 +86,13 @@ function invokeGrokBinary(
     args.push("--rules", opts.appendSystemPrompt);
   }
 
+  // Use --deny rules instead of --disallowed-tools: passing --disallowed-tools
+  // corrupts grok's internal run_terminal_cmd config (auto_background_on_timeout
+  // requires enabled_background), failing session creation.
   if (opts.disallowedTools?.length) {
-    args.push("--disallowed-tools", opts.disallowedTools.join(","));
+    for (const tool of opts.disallowedTools) {
+      args.push("--deny", tool);
+    }
   }
 
   if (opts.allowedTools?.length) {
@@ -86,9 +115,48 @@ function invokeGrokBinary(
       child.kill("SIGTERM");
     }, opts.timeoutMs);
 
-    let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
+    let partial = "";
+    let text = "";
+    let thoughtBuf = "";
+    let stopReason = "";
+    let sessionId = "";
+    let sawEnd = false;
+
+    function flushThought(): void {
+      if (verbose && thoughtBuf.trim()) {
+        const t = thoughtBuf.trim().replace(/\s+/g, " ");
+        log(`[${tag}] 💭 ${t.slice(0, 200)}${t.length > 200 ? "..." : ""}`);
+      }
+      thoughtBuf = "";
+    }
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      partial += chunk.toString();
+      const lines = partial.split("\n");
+      partial = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const e = JSON.parse(line) as GrokStreamEvent;
+          if (e.type === "thought") {
+            thoughtBuf += e.data ?? "";
+          } else if (e.type === "text") {
+            if (thoughtBuf) flushThought();
+            text += e.data ?? "";
+          } else if (e.type === "end") {
+            if (thoughtBuf) flushThought();
+            sawEnd = true;
+            stopReason = e.stopReason ?? "";
+            sessionId = e.sessionId ?? "";
+            if (verbose && text.trim()) {
+              log(`[${tag}] 🗣️  ${text.trim().slice(0, 200)}${text.length > 200 ? "..." : ""}`);
+            }
+          }
+        } catch { /* skip non-JSON */ }
+      }
+    });
+
     child.stderr.on("data", (d: Buffer) => {
       stderr += d.toString();
       if (verbose) process.stderr.write(`[${tag}:stderr] ${d}`);
@@ -100,24 +168,24 @@ function invokeGrokBinary(
 
       const durationMs = Date.now() - start;
 
-      try {
-        const raw: GrokRawOutput = JSON.parse(stdout.trim());
+      if (sawEnd || text) {
+        const contextTokens = readGrokTokens(sessionId);
         resolve({
-          success: raw.stopReason === "EndTurn",
-          result: raw.text ?? "",
+          success: stopReason === "EndTurn" || (!!text && code === 0),
+          result: text,
           durationMs,
           costUsd: 0,
-          inputTokens: 0,
+          inputTokens: contextTokens,
           outputTokens: 0,
           cacheReadTokens: 0,
           cacheCreationTokens: 0,
           numTurns: 1,
-          sessionId: raw.sessionId ?? "",
+          sessionId,
         });
-      } catch {
+      } else {
         resolve(
           failedResult(
-            `Failed to parse ${binary} output. Exit code: ${code}. stderr: ${stderr.slice(0, 500)}. stdout: ${stdout.slice(0, 500)}`,
+            `Failed to get ${binary} output. Exit code: ${code}. stderr: ${stderr.slice(0, 500)}`,
           ),
         );
       }
@@ -131,6 +199,23 @@ function invokeGrokBinary(
   });
 }
 
-export function invokeGrok(opts: AgentInvokeOptions): Promise<AgentResult> {
-  return invokeGrokBinary("grok", opts);
+// Grok's MCP workers intermittently crash with a fatal auth/transport error that
+// kills the whole session before any output. It's transient — a retry usually
+// succeeds. Detect that signature (no output + transport/auth crash) and retry once.
+function isTransientCrash(r: AgentResult): boolean {
+  if (r.success || r.result) return false;
+  const e = r.error ?? "";
+  return e.includes("Transport channel closed")
+    || e.includes("worker quit with fatal")
+    || e.includes("AuthorizationRequired")
+    || e.includes("Exit code: null");
+}
+
+export async function invokeGrok(opts: AgentInvokeOptions): Promise<AgentResult> {
+  let result = await invokeGrokBinary("grok", opts);
+  if (isTransientCrash(result)) {
+    log(`[${opts.tag ?? "grok"}] transient MCP crash — retrying once`);
+    result = await invokeGrokBinary("grok", opts);
+  }
+  return result;
 }

@@ -44,14 +44,28 @@ function failedResult(error: string): AgentResult {
 function logCodexEvent(event: CodexEvent, tag: string, turnCount: number): void {
   if (event.type === "thread.started") {
     log(`[${tag}] Thread started: ${(event as CodexThreadEvent).thread_id}`);
-  } else if (event.type === "item.completed") {
-    const item = (event as CodexItemEvent).item;
-    if (item.type === "agent_message") {
-      log(`[${tag}] 🗣️  ${item.text.slice(0, 200)}${item.text.length > 200 ? "..." : ""}`);
-    } else if (item.type === "tool_call") {
-      log(`[${tag}]   Tool: ${item.text.slice(0, 150)}`);
-    } else {
-      log(`[${tag}]   [${item.type}] ${item.text?.slice(0, 150) ?? "(no text)"}`);
+  } else if (event.type === "item.completed" || event.type === "item.started") {
+    const raw = JSON.parse(JSON.stringify(event)) as { item?: Record<string, unknown> };
+    const item = raw.item ?? {};
+    const itype = item.type as string;
+    if (itype === "agent_message" && event.type === "item.completed") {
+      const text = (item.text as string) ?? "";
+      log(`[${tag}] 🗣️  ${text.slice(0, 200)}${text.length > 200 ? "..." : ""}`);
+    } else if (itype === "command_execution" && event.type === "item.started") {
+      const cmd = (item.command as string) ?? "";
+      log(`[${tag}]   Shell: ${cmd.slice(0, 150)}`);
+    } else if (itype === "mcp_tool_call" && event.type === "item.started") {
+      const server = (item.server as string) ?? "";
+      const tool = (item.tool as string) ?? "";
+      log(`[${tag}]   MCP: ${server}/${tool}`);
+    } else if (itype === "command_execution" && event.type === "item.completed") {
+      const output = (item.aggregated_output as string) ?? "";
+      if (output) log(`[${tag}]   ↳ ${output.trim().slice(0, 150)}`);
+    } else if (itype === "mcp_tool_call" && event.type === "item.completed") {
+      // mcp result logged on completion — skip noise
+    } else if (event.type === "item.completed") {
+      const text = (item.text as string) ?? "";
+      if (text) log(`[${tag}]   [${itype}] ${text.slice(0, 150)}`);
     }
   } else if (event.type === "turn.completed") {
     const usage = (event as CodexTurnEvent).usage;
@@ -106,6 +120,7 @@ export function invokeCodex(opts: AgentInvokeOptions): Promise<AgentResult> {
     let text = "";
     let inputTokens = 0;
     let outputTokens = 0;
+    let cachedInputTokens = 0;
     let sessionId = "";
     let numTurns = 0;
     let partial = "";
@@ -140,6 +155,7 @@ export function invokeCodex(opts: AgentInvokeOptions): Promise<AgentResult> {
             const usage = (event as CodexTurnEvent).usage;
             inputTokens += usage.input_tokens ?? 0;
             outputTokens += usage.output_tokens ?? 0;
+            cachedInputTokens += usage.cached_input_tokens ?? 0;
             numTurns++;
           }
           if (verbose) logCodexEvent(event, tag, numTurns);
@@ -171,15 +187,16 @@ export function invokeCodex(opts: AgentInvokeOptions): Promise<AgentResult> {
         return;
       }
 
-      const tokens = { inputTokens, outputTokens, cacheReadTokens: 0, cacheCreationTokens: 0 };
+      const uncachedInput = Math.max(0, inputTokens - cachedInputTokens);
+      const tokens = { inputTokens: uncachedInput, outputTokens, cacheReadTokens: cachedInputTokens, cacheCreationTokens: 0 };
       resolve({
         success: code === 0 || timedOut,
         result: text,
         durationMs,
         costUsd: estimateCost(opts.model, tokens),
-        inputTokens,
+        inputTokens: uncachedInput,
         outputTokens,
-        cacheReadTokens: 0,
+        cacheReadTokens: cachedInputTokens,
         cacheCreationTokens: 0,
         numTurns: numTurns || (timedOut && text ? 1 : 0),
         sessionId,

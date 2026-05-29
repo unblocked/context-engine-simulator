@@ -39,6 +39,8 @@ const PRICING: Record<string, { input: number; output: number; cacheRead: number
   "claude-sonnet-4-5": { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 },
   "claude-opus-4-7": { input: 5, output: 25, cacheRead: 0.50, cacheWrite: 6.25 },
   "claude-haiku-4-5": { input: 1, output: 5, cacheRead: 0.10, cacheWrite: 1.25 },
+  "gpt-5.4": { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 2.5 },
+  "gpt-5.4-mini": { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0.75 },
   "gpt-4o": { input: 2.5, output: 10, cacheRead: 1.25, cacheWrite: 2.5 },
   "gpt-4.1": { input: 2, output: 8, cacheRead: 0.50, cacheWrite: 2 },
   "o3": { input: 10, output: 40, cacheRead: 2.50, cacheWrite: 10 },
