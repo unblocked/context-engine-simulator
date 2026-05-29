@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -120,25 +120,34 @@ function prepareCursorWorktree(repo: string, wtName: string, disabledServers: st
   log(`Prepared cursor worktree config for ${wtName}`);
 }
 
+const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
+
+function git(worktreePath: string, args: string[]): string {
+  // execFileSync passes args directly to git without a shell, so filenames
+  // containing spaces, quotes, or shell metacharacters are handled safely.
+  return execFileSync("git", args, {
+    cwd: worktreePath,
+    stdio: "pipe",
+    maxBuffer: DIFF_MAX_BUFFER,
+  }).toString();
+}
+
 function captureWorktreeDiff(worktreePath: string): string {
   try {
-    const staged = execSync("git diff --staged", { cwd: worktreePath, stdio: "pipe", maxBuffer: 1024 * 1024 }).toString();
-    const unstaged = execSync("git diff", { cwd: worktreePath, stdio: "pipe", maxBuffer: 1024 * 1024 }).toString();
-    const untracked = execSync("git ls-files --others --exclude-standard", { cwd: worktreePath, stdio: "pipe" }).toString().trim();
+    let diff = git(worktreePath, ["diff", "--staged"]) + git(worktreePath, ["diff"]);
 
-    let diff = "";
-    if (staged) diff += staged;
-    if (unstaged) diff += unstaged;
+    // Null-delimited so filenames with spaces/newlines are parsed correctly.
+    const untracked = git(worktreePath, ["ls-files", "--others", "--exclude-standard", "-z"])
+      .split("\0")
+      .filter(Boolean);
 
-    if (untracked) {
-      for (const file of untracked.split("\n").filter(Boolean)) {
-        try {
-          const content = execSync(`git diff --no-index /dev/null "${file}"`, { cwd: worktreePath, stdio: "pipe", maxBuffer: 1024 * 1024 }).toString();
-          diff += content;
-        } catch (e: unknown) {
-          const err = e as { stdout?: Buffer };
-          if (err.stdout) diff += err.stdout.toString();
-        }
+    for (const file of untracked) {
+      try {
+        diff += git(worktreePath, ["diff", "--no-index", "--", "/dev/null", file]);
+      } catch (e: unknown) {
+        // git diff --no-index exits non-zero when files differ; its stdout is the diff.
+        const err = e as { stdout?: Buffer };
+        if (err.stdout) diff += err.stdout.toString();
       }
     }
 
@@ -498,10 +507,17 @@ export async function runExperiment(config: CliConfig): Promise<ExperimentResult
 
   try {
     log(`Running baseline and context chains in parallel (agent: ${config.agent})...`);
-    const [baseline, contextEnhanced] = await Promise.all([
+    // allSettled (not all): if one arm rejects (e.g. contamination), we still wait
+    // for the other to finish before the `finally` cleanup tears down its worktree,
+    // so we never orphan a live agent process or delete files out from under it.
+    const [baselineResult, contextResult] = await Promise.allSettled([
       runBaselineChain(invoke, config, baselineWtSetup),
       runContextChain(invoke, config, contextWtSetup),
     ]);
+    if (baselineResult.status === "rejected") throw baselineResult.reason;
+    if (contextResult.status === "rejected") throw contextResult.reason;
+    const baseline = baselineResult.value;
+    const contextEnhanced = contextResult.value;
 
     log("Generating report...");
 

@@ -15,16 +15,16 @@ import { log } from "./util.js";
 function readGrokTokens(sessionId: string): number {
   if (!sessionId) return 0;
   const base = join(homedir(), ".grok", "sessions");
-  if (!existsSync(base)) return 0;
-  for (const cwdDir of readdirSync(base)) {
-    const signals = join(base, cwdDir, sessionId, "signals.json");
-    if (existsSync(signals)) {
-      try {
+  try {
+    if (!existsSync(base)) return 0;
+    for (const cwdDir of readdirSync(base)) {
+      const signals = join(base, cwdDir, sessionId, "signals.json");
+      if (existsSync(signals)) {
         const s = JSON.parse(readFileSync(signals, "utf-8")) as { contextTokensUsed?: number };
         return s.contextTokensUsed ?? 0;
-      } catch { return 0; }
+      }
     }
-  }
+  } catch { /* token metrics are best-effort; never fail the run over them */ }
   return 0;
 }
 

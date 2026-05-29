@@ -84,10 +84,17 @@ export function invokeClaude(opts: AgentInvokeOptions): Promise<AgentResult> {
       env: { ...process.env, ...opts.env },
     });
 
+    let timedOut = false;
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill("SIGTERM");
+      // Escalate to SIGKILL if the agent ignores SIGTERM (e.g. it spawned subprocesses).
+      setTimeout(() => child.kill("SIGKILL"), 5000).unref();
     }, opts.timeoutMs);
 
+    // Guard against EPIPE if the child exits before consuming stdin; the close/error
+    // handlers report the failure, so this just prevents an unhandled throw.
+    child.stdin.on("error", () => { /* ignore broken-pipe writes */ });
     child.stdin.write(opts.prompt);
     child.stdin.end();
 
@@ -127,7 +134,11 @@ export function invokeClaude(opts: AgentInvokeOptions): Promise<AgentResult> {
         if (finalResult) {
           resolve(parseClaudeOutput(finalResult));
         } else {
-          resolve(failedResult(`No result event in stream. Exit code: ${code}`));
+          resolve(failedResult(
+            timedOut
+              ? `Timed out after ${opts.timeoutMs}ms before emitting a result.`
+              : `No result event in stream. Exit code: ${code}`,
+          ));
         }
       });
     } else {
@@ -144,7 +155,9 @@ export function invokeClaude(opts: AgentInvokeOptions): Promise<AgentResult> {
         } catch {
           resolve(
             failedResult(
-              `Failed to parse claude output. Exit code: ${code}. stderr: ${stderr.slice(0, 500)}. stdout: ${stdout.slice(0, 500)}`
+              timedOut
+                ? `Timed out after ${opts.timeoutMs}ms. Exit code: ${code}.`
+                : `Failed to parse claude output. Exit code: ${code}. stderr: ${stderr.slice(0, 500)}. stdout: ${stdout.slice(0, 500)}`
             )
           );
         }

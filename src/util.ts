@@ -50,12 +50,18 @@ const PRICING: Record<string, { input: number; output: number; cacheRead: number
   "haiku": { input: 1, output: 5, cacheRead: 0.10, cacheWrite: 1.25 },
 };
 
+const warnedModels = new Set<string>();
+
 function matchPricing(model: string): { input: number; output: number; cacheRead: number; cacheWrite: number } {
   if (PRICING[model]) return PRICING[model];
   const m = model.toLowerCase();
   if (m.includes("opus")) return PRICING["opus"];
   if (m.includes("haiku")) return PRICING["haiku"];
   if (m.includes("sonnet")) return PRICING["sonnet"];
+  if (!warnedModels.has(model)) {
+    warnedModels.add(model);
+    log(`No pricing for model "${model}" — estimating cost at default (sonnet) rates.`);
+  }
   return PRICING["sonnet"];
 }
 
