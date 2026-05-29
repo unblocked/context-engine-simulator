@@ -52,6 +52,19 @@ Results are written as a **terminal table**, a **JSON file**, and a **standalone
 
 Each agent must be authenticated per its own CLI. The simulator shells out to whichever one you select.
 
+### Configure the agent's MCP servers against the target repo
+
+The whole point of the experiment is the context the agent can reach, so the agent under test must have its MCP servers configured **for the target repository** before you run anything. Worktrees inherit that configuration.
+
+Set this up once by launching the agent interactively inside the target repo and confirming its MCP servers connect:
+
+```bash
+cd /path/to/target-repo
+claude        # or: codex, cursor, grok — whichever agent you'll test
+```
+
+Verify every expected MCP server shows as connected (e.g. `/mcp` in Claude Code, the startup MCP status in the others). Authenticate any that prompt. Once they all connect cleanly here, the simulator's runs will have the same access. Skipping this means the context arm silently gathers less than it should.
+
 ---
 
 ## Install
