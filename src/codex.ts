@@ -105,6 +105,7 @@ export function invokeCodex(opts: AgentInvokeOptions): Promise<AgentResult> {
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 5000).unref();
     }, opts.timeoutMs);
 
     const systemText = [opts.systemPrompt, opts.appendSystemPrompt]
@@ -114,6 +115,7 @@ export function invokeCodex(opts: AgentInvokeOptions): Promise<AgentResult> {
       ? `${systemText}\n\n---\n\n${opts.prompt}`
       : opts.prompt;
 
+    child.stdin.on("error", () => { /* ignore broken-pipe writes; close handler reports failure */ });
     child.stdin.write(fullPrompt);
     child.stdin.end();
 
@@ -190,8 +192,11 @@ export function invokeCodex(opts: AgentInvokeOptions): Promise<AgentResult> {
       const uncachedInput = Math.max(0, inputTokens - cachedInputTokens);
       const tokens = { inputTokens: uncachedInput, outputTokens, cacheReadTokens: cachedInputTokens, cacheCreationTokens: 0 };
       resolve({
-        success: code === 0 || timedOut,
+        // A timeout is NOT a success even if partial text was produced — we keep the
+        // partial result and token usage, but the run did not complete cleanly.
+        success: code === 0 && !timedOut,
         result: text,
+        error: timedOut ? "Timed out (partial result retained)" : undefined,
         durationMs,
         costUsd: estimateCost(opts.model, tokens),
         inputTokens: uncachedInput,

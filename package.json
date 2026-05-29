@@ -4,7 +4,26 @@
   "description": "A/B test whether pre-gathered organizational context helps AI coding agents complete tasks faster, cheaper, and better",
   "type": "module",
   "license": "MIT",
+  "author": "Unblocked",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unblocked/context-engine-simulator.git"
+  },
+  "homepage": "https://github.com/unblocked/context-engine-simulator#readme",
+  "bugs": {
+    "url": "https://github.com/unblocked/context-engine-simulator/issues"
+  },
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "claude",
+    "codex",
+    "cursor",
+    "context",
+    "evaluation",
+    "benchmark"
+  ],
   "engines": {
     "node": ">=18"
   },

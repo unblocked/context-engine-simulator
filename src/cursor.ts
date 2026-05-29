@@ -104,6 +104,7 @@ export function invokeCursor(opts: AgentInvokeOptions): Promise<AgentResult> {
 
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 5000).unref();
     }, opts.timeoutMs);
 
     if (useStreaming) {
@@ -134,6 +135,13 @@ export function invokeCursor(opts: AgentInvokeOptions): Promise<AgentResult> {
       child.on("close", (code) => {
         clearTimeout(timer);
         if (contaminated) return;
+        // Flush any trailing line not terminated by a newline (the result event
+        // can arrive without a final \n before the stream closes).
+        if (state.partial) {
+          processStreamChunk(state.partial + "\n", tag, state, {
+            onResult: (e) => { finalResult = e as unknown as CursorRawOutput; },
+          });
+        }
         if (finalResult) {
           resolve(parseCursorOutput(finalResult, opts.model, state.turnCount));
         } else {
