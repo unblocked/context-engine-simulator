@@ -96,7 +96,7 @@ export function writeHtmlReport(result: ExperimentResult, experimentDir: string)
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Context Engine — Experiment Results</title>
+<title>Context Engine Simulator — Experiment Results</title>
 <style>
   :root {
     --bg: #0a0a0f;
@@ -125,7 +125,7 @@ export function writeHtmlReport(result: ExperimentResult, experimentDir: string)
     min-height: 100vh;
   }
 
-  .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+  .container { max-width: 1600px; margin: 0 auto; padding: 40px 48px; }
 
   /* Header */
   .header {
@@ -464,7 +464,7 @@ export function writeHtmlReport(result: ExperimentResult, experimentDir: string)
   /* Meta */
   .meta-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 12px;
     margin-bottom: 40px;
   }
@@ -599,18 +599,11 @@ export function writeHtmlReport(result: ExperimentResult, experimentDir: string)
   <!-- Header -->
   <div class="header">
     <div class="logo">U</div>
-    <h1>Context Engine</h1>
+    <h1>Context Engine Simulator</h1>
   </div>
   <div class="subtitle">
     Experiment Results &mdash; ${timestamp} &nbsp;
     <a class="brand-tag" href="https://getunblocked.com" target="_blank" rel="noopener">Powered by Unblocked</a>
-  </div>
-
-  <!-- Top CTA -->
-  <div class="cta-row">
-    <a class="cta-button" href="https://getunblocked.com/demo" target="_blank" rel="noopener">
-      Book a Demo <span class="arrow">&rarr;</span>
-    </a>
   </div>
 
   <!-- Meta -->
@@ -636,24 +629,6 @@ export function writeHtmlReport(result: ExperimentResult, experimentDir: string)
       <span class="meta-val">${formatDuration(result.totalDurationMs)}</span>
     </div>
   </div>
-
-  <!-- Task -->
-  <div class="section">
-    <div class="section-title">Task</div>
-    <div class="reasoning-box">
-      <div class="reasoning-text">${escapeHtml(result.task)}</div>
-    </div>
-  </div>
-
-  ${result.criteria ? `
-  <!-- Acceptance Criteria -->
-  <div class="section">
-    <div class="section-title">Acceptance Criteria</div>
-    <div class="reasoning-box">
-      <div class="reasoning-text">${escapeHtml(result.criteria)}</div>
-    </div>
-  </div>
-  ` : ""}
 
   <!-- Hero Metrics -->
   <div class="hero-grid">
@@ -699,6 +674,24 @@ export function writeHtmlReport(result: ExperimentResult, experimentDir: string)
           ${c.evaluation!.score}<span class="score-max">/100</span>
         </div>
       </div>
+    </div>
+  </div>
+  ` : ""}
+
+  <!-- Task -->
+  <div class="section">
+    <div class="section-title">Task</div>
+    <div class="reasoning-box">
+      <div class="reasoning-text">${escapeHtml(result.task)}</div>
+    </div>
+  </div>
+
+  ${result.criteria ? `
+  <!-- Acceptance Criteria -->
+  <div class="section">
+    <div class="section-title">Acceptance Criteria</div>
+    <div class="reasoning-box">
+      <div class="reasoning-text">${escapeHtml(result.criteria)}</div>
     </div>
   </div>
   ` : ""}
