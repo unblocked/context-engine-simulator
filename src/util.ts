@@ -35,6 +35,7 @@ export interface TokenUsageLike {
 
 // Per-token pricing ($/M tokens) — from cursor.com/docs/models-and-pricing and provider docs
 const PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+  "claude-fable-5": { input: 10, output: 50, cacheRead: 1.00, cacheWrite: 12.50 },
   "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 },
   "claude-sonnet-4-5": { input: 3, output: 15, cacheRead: 0.30, cacheWrite: 3.75 },
   "claude-opus-4-7": { input: 5, output: 25, cacheRead: 0.50, cacheWrite: 6.25 },
@@ -55,6 +56,7 @@ const warnedModels = new Set<string>();
 function matchPricing(model: string): { input: number; output: number; cacheRead: number; cacheWrite: number } {
   if (PRICING[model]) return PRICING[model];
   const m = model.toLowerCase();
+  if (m.includes("fable")) return PRICING["claude-fable-5"];
   if (m.includes("opus")) return PRICING["opus"];
   if (m.includes("haiku")) return PRICING["haiku"];
   if (m.includes("sonnet")) return PRICING["sonnet"];
